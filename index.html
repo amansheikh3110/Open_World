@@ -1,18 +1,162 @@
-.container-fluid.fixed-top.header.disable-selection
-  .row
-    .col
-    .col-md-6
-      .row
-        .col
-          h1
-            strong Lab City 3D
-          p.small – Back to the red –
-          //.btn.btn-danger(href='#',role='button', onclick='cameraSet()') + ADD LINE
-    .col
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Lab City 3D - An interactive low-poly 3D city scene experiment built with Three.js and GSAP. Customize animations, themes, and density.">
+  <title>Lab City 3D - Interactive ThreeJS Experiment</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Bootstrap 5 CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css">
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="disable-selection">
+  <!-- Interactive WebGL Canvas Container -->
+  <div id="canvas-container"></div>
 
-//.container-fluid.fixed-bottom.footer
- .row
-  .col
-   h4 Experiment N.3
-   small
-    a(href='https://dribbble.com/victorvergara', target='_blank') dribbble.com/victorvergara
+  <!-- Loading Screen -->
+  <div id="loader" class="loader-overlay">
+    <div class="loader-content">
+      <div class="spinner-grow text-danger" role="status" id="loader-spinner">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <h2 class="mt-3 fs-4 fw-light text-uppercase tracking-wider">Generating City...</h2>
+    </div>
+  </div>
+
+  <!-- Main UI Layout -->
+  <div class="ui-wrapper">
+    <!-- Header -->
+    <header class="main-header">
+      <div class="container-fluid py-3 px-4 d-flex justify-content-between align-items-center">
+        <div class="header-logo">
+          <h1 class="logo-title m-0">Lab City <strong>3D</strong></h1>
+          <p class="logo-subtitle m-0">— Back to the red —</p>
+        </div>
+        <div class="header-experiment">
+          <span class="badge rounded-pill bg-dark-glass text-white px-3 py-2 border border-secondary-subtle">
+            <span class="pulse-indicator"></span> Experiment N.3
+          </span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Sidebar Dashboard Controls (Glassmorphism) -->
+    <div class="control-panel glass-card">
+      <div class="panel-section">
+        <h3 class="section-title"><i class="fa-solid fa-palette me-2"></i>Color Theme</h3>
+        <div class="theme-buttons">
+          <button class="theme-btn active" id="theme-pink" data-color="0xF02050" title="Neon Pink">
+            <span class="color-dot" style="background-color: #F02050;"></span>
+          </button>
+          <button class="theme-btn" id="theme-yellow" data-color="0xF2F111" title="Cyberpunk Yellow">
+            <span class="color-dot" style="background-color: #F2F111;"></span>
+          </button>
+          <button class="theme-btn" id="theme-blue" data-color="0x1a1f3c" title="Midnight Blue">
+            <span class="color-dot" style="background-color: #1a1f3c;"></span>
+          </button>
+          <button class="theme-btn" id="theme-orange" data-color="0xFF6347" title="Sunset Orange">
+            <span class="color-dot" style="background-color: #FF6347;"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="section-title"><i class="fa-solid fa-wind me-2"></i>Animation Mode</h3>
+        <div class="animation-selector">
+          <button class="anim-mode-btn" id="anim-static" data-mode="static">
+            <i class="fa-solid fa-lock me-1"></i> Static
+          </button>
+          <button class="anim-mode-btn active" id="anim-breathing" data-mode="breathing">
+            <i class="fa-solid fa-wave-square me-1"></i> Breathing
+          </button>
+          <button class="anim-mode-btn" id="anim-elastic" data-mode="elastic">
+            <i class="fa-solid fa-bolt me-1"></i> Elastic
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="section-title"><i class="fa-solid fa-sliders me-2"></i>Toggles</h3>
+        
+        <div class="toggle-control form-check form-switch py-1">
+          <input class="form-check-input" type="checkbox" id="toggle-grid" checked>
+          <label class="form-check-label text-white-50" for="toggle-grid">Show City Grid</label>
+        </div>
+
+        <div class="toggle-control form-check form-switch py-1">
+          <input class="form-check-input" type="checkbox" id="toggle-smoke" checked>
+          <label class="form-check-label text-white-50" for="toggle-smoke">Floating Smoke</label>
+        </div>
+
+        <div class="toggle-control form-check form-switch py-1">
+          <input class="form-check-input" type="checkbox" id="toggle-fog" checked>
+          <label class="form-check-label text-white-50" for="toggle-fog">Atmospheric Fog</label>
+        </div>
+      </div>
+
+      <div class="panel-section pb-0">
+        <h3 class="section-title"><i class="fa-solid fa-gears me-2"></i>Actions</h3>
+        
+        <button class="btn btn-action w-100 mb-2" id="action-add-line">
+          <i class="fa-solid fa-plus me-2"></i>Add Car Lines
+        </button>
+
+        <button class="btn btn-action w-100 mb-2" id="action-randomize">
+          <i class="fa-solid fa-shuffle me-2"></i>Randomize City
+        </button>
+
+        <button class="btn btn-action w-100" id="action-reset-camera">
+          <i class="fa-solid fa-camera-rotate me-2"></i>Reset Camera
+        </button>
+      </div>
+    </div>
+
+    <!-- Instruction Helper Overlay -->
+    <div class="instruction-card glass-card">
+      <div class="d-flex align-items-center">
+        <i class="fa-solid fa-mouse-pointer fs-4 text-white me-3 animate-bounce"></i>
+        <div>
+          <h4 class="instruction-title m-0">Interaction Tip</h4>
+          <p class="instruction-desc m-0 text-white-50">Drag mouse to pan view &bull; Move mouse to rotate lighting</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+      <div class="container-fluid py-3 px-4 d-flex justify-content-between align-items-center">
+        <div class="footer-attribution text-white-50 small">
+          Inspired by <a href="https://dribbble.com/victorvergara" target="_blank" class="text-white text-decoration-none border-bottom border-secondary-subtle pb-1">Victor Vergara</a>
+        </div>
+        <div class="footer-meta text-white-50 small">
+          Built with Three.js &bull; GSAP
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Libraries -->
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  
+  <!-- GSAP CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  
+  <!-- Bootstrap JS (bundle containing popper.js) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Core Javascript -->
+  <script src="script.js"></script>
+</body>
+</html>
