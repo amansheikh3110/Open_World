@@ -4,6 +4,10 @@
 var currentAnimMode = 'breathing'; // 'static', 'breathing', 'elastic'
 var activeTheme = 'pink';
 
+var bubble;
+var bubbleMaterial;
+var bubbleNoiseTexture;
+
 var themes = {
   pink: {
     hex: '#F02050',
@@ -73,6 +77,64 @@ scene.fog = new THREE.Fog(setcolor, 10, 16);
 function mathRandom(num = 8) {
   var numValue = - Math.random() * num + Math.random() * num;
   return numValue;
+}
+
+// Procedural normal map texture generator for refractive distortion noise
+function createNoiseNormalTexture() {
+  var size = 256;
+  var canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  var ctx = canvas.getContext('2d');
+  var imgData = ctx.createImageData(size, size);
+  
+  var heights = new Float32Array(size * size);
+  for (var y = 0; y < size; y++) {
+    for (var x = 0; x < size; x++) {
+      var val = 0;
+      var scale = 0.04;
+      val += Math.sin(x * scale) * Math.cos(y * scale) * 1.0;
+      val += Math.sin(x * scale * 2.3 + 1.5) * Math.sin(y * scale * 1.7 + 2.3) * 0.5;
+      val += Math.cos(x * scale * 4.1 + 0.7) * Math.cos(y * scale * 5.3 + 1.2) * 0.25;
+      heights[y * size + x] = val;
+    }
+  }
+  
+  for (var y = 0; y < size; y++) {
+    for (var x = 0; x < size; x++) {
+      var xLeft = heights[y * size + ((x - 1 + size) % size)];
+      var xRight = heights[y * size + ((x + 1) % size)];
+      var yUp = heights[((y - 1 + size) % size) * size + x];
+      var yDown = heights[((y + 1) % size) * size + x];
+      
+      var dx = (xRight - xLeft) * 1.5;
+      var dy = (yDown - yUp) * 1.5;
+      var dz = 1.0;
+      
+      var len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      dx /= len;
+      dy /= len;
+      dz /= len;
+      
+      var r = Math.floor((dx * 0.5 + 0.5) * 255);
+      var g = Math.floor((dy * 0.5 + 0.5) * 255);
+      var b = Math.floor((dz * 0.5 + 0.5) * 255);
+      
+      var idx = (y * size + x) * 4;
+      imgData.data[idx] = r;
+      imgData.data[idx+1] = g;
+      imgData.data[idx+2] = b;
+      imgData.data[idx+3] = 255;
+    }
+  }
+  
+  ctx.putImageData(imgData, 0, 0);
+  
+  var texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1.5, 1.5);
+  return texture;
 }
 
 //----------------------------------------------------------------- CREATE City
@@ -146,6 +208,82 @@ function init() {
   pelement.receiveShadow = true;
 
   city.add(pelement);
+  
+  //----------------------------------------------------------------- Glass Sphere Dome
+  bubbleNoiseTexture = createNoiseNormalTexture();
+  
+  bubbleMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.22,
+    roughness: 0.05,
+    metalness: 0.1,
+    transmission: 0.9,     // Refraction through the glass
+    ior: 1.25,             // Index of Refraction
+    thickness: 1.5,        // Refraction depth
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.05,
+    normalMap: bubbleNoiseTexture,
+    normalScale: new THREE.Vector2(0.2, 0.2), // strength of normal distortion
+    depthWrite: false,     // prevent depth clipping bugs
+    side: THREE.DoubleSide
+  });
+
+  // Initial emissive color based on theme
+  var initEmissive = new THREE.Color(0x300510); // pink
+  if (activeTheme === 'yellow') initEmissive.setHex(0x202002);
+  else if (activeTheme === 'blue') initEmissive.setHex(0x052030);
+  else if (activeTheme === 'orange') initEmissive.setHex(0x301005);
+  bubbleMaterial.emissive = initEmissive;
+
+  // Vertex shader displacement via onBeforeCompile
+  bubbleMaterial.onBeforeCompile = function(shader) {
+    shader.uniforms.uTime = { value: 0 };
+    
+    shader.vertexShader = `
+      uniform float uTime;
+      float getDisplacement(vec3 p, float time) {
+        float d = sin(p.x * 1.2 + time) * cos(p.y * 1.2 + time) * 0.15;
+        d += sin(p.z * 2.5 - time * 1.5) * cos(p.x * 2.5 + time * 0.8) * 0.08;
+        return d;
+      }
+    ` + shader.vertexShader;
+    
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `
+      #include <begin_vertex>
+      float disp = getDisplacement(position, uTime);
+      transformed += normal * disp;
+      `
+    );
+    
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <beginnormal_vertex>',
+      `
+      #include <beginnormal_vertex>
+      float disp = getDisplacement(position, uTime);
+      float dispDeltaX = getDisplacement(position + vec3(0.01, 0.0, 0.0), uTime) - disp;
+      float dispDeltaY = getDisplacement(position + vec3(0.0, 0.01, 0.0), uTime) - disp;
+      objectNormal.x -= dispDeltaX * 12.0;
+      objectNormal.y -= dispDeltaY * 12.0;
+      objectNormal = normalize(objectNormal);
+      `
+    );
+    
+    bubbleMaterial.userData.shader = shader;
+  };
+
+  var bubbleGeometry = new THREE.SphereGeometry(10, 64, 64);
+  bubble = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
+  bubble.position.set(0, 1, 0); // raised dome enclosing the city
+  
+  var toggleEl = document.getElementById('toggle-bubble');
+  if (toggleEl) {
+    bubble.visible = toggleEl.checked;
+  }
+  
+  city.add(bubble);
   
   // Set initial animation state
   if (currentAnimMode === 'elastic') {
@@ -286,6 +424,17 @@ var animate = function() {
     }
   }
   
+  // Animate dynamic refraction noise coordinate offset
+  if (bubbleNoiseTexture) {
+    bubbleNoiseTexture.offset.x = time * 0.03;
+    bubbleNoiseTexture.offset.y = time * 0.015;
+  }
+  
+  // Update custom shader time uniform for vertex wobbles
+  if (bubbleMaterial && bubbleMaterial.userData.shader) {
+    bubbleMaterial.userData.shader.uniforms.uTime.value = time * 1.5;
+  }
+  
   smoke.rotation.y += 0.005;
   smoke.rotation.x += 0.002;
   
@@ -318,6 +467,22 @@ function switchTheme(themeName) {
       r: targetColor.r,
       g: targetColor.g,
       b: targetColor.b,
+      duration: 0.8
+    });
+  }
+
+  // Dynamic transition for the glass sphere emissive glow color
+  if (bubble && bubble.material) {
+    var emissiveColor;
+    if (themeName === 'pink') emissiveColor = new THREE.Color(0x300510);
+    else if (themeName === 'yellow') emissiveColor = new THREE.Color(0x202002);
+    else if (themeName === 'blue') emissiveColor = new THREE.Color(0x052030);
+    else if (themeName === 'orange') emissiveColor = new THREE.Color(0x301005);
+    
+    gsap.to(bubble.material.emissive, {
+      r: emissiveColor.r,
+      g: emissiveColor.g,
+      b: emissiveColor.b,
       duration: 0.8
     });
   }
@@ -505,6 +670,12 @@ document.addEventListener('DOMContentLoaded', function() {
       scene.fog = new THREE.Fog(themes[activeTheme].colorVal, 10, 16);
     } else {
       scene.fog = null;
+    }
+  });
+  
+  document.getElementById('toggle-bubble').addEventListener('change', function(e) {
+    if (bubble) {
+      bubble.visible = e.target.checked;
     }
   });
   
